@@ -57,6 +57,16 @@
             <artifactId>hapi-fhir-client</artifactId>
             <version>${hapi-version}</version>
         </dependency>
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.10</version>
+        </dependency>
+        <dependency>
+            <groupId>com.konghq</groupId>
+            <artifactId>unirest-java</artifactId>
+            <version>3.1.00</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

@@ -8,20 +8,16 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.hl7.fhir.dstu3.model.Attachment;
-import org.hl7.fhir.dstu3.model.CapabilityStatement;
 import org.hl7.fhir.dstu3.model.Library;
-import org.hl7.fhir.instance.model.api.IBaseConformance;
-import org.hl7.fhir.instance.model.api.IBaseResource;
-
+import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.context.FhirVersionEnum;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import kong.unirest.Unirest;
 
-import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.context.FhirVersionEnum;
-import ca.uhn.fhir.rest.client.api.IGenericClient;
-import ca.uhn.fhir.rest.gclient.IFetchConformanceUntyped;
 
 public class ViewerController {
 
@@ -142,8 +138,13 @@ public class ViewerController {
     }
 
     private FhirVersionEnum getVersion(String baseUrl) {
-        IBaseConformance c = this.currentContext.newRestfulGenericClient(baseUrl).capabilities().ofType(IBaseConformance.class).execute();
-        return c.getStructureFhirVersionEnum();
+        String result = Unirest.get(baseUrl + "/metadata")
+                .asJson()
+                .getBody()
+                .getObject()
+                .getString("fhirVersion");
+        
+        return FhirVersionEnum.forVersionString(result);
     }
 
     private void setContext(FhirVersionEnum version) {
@@ -213,7 +214,7 @@ public class ViewerController {
     private String get4(IGenericClient client, String url) {
         org.hl7.fhir.r4.model.Library resource = client.read().resource(org.hl7.fhir.r4.model.Library.class).withUrl(url).execute();
         Optional< org.hl7.fhir.r4.model.Attachment> attachment = resource.getContent().stream().filter(x -> x.getContentType().equals("text/cql")).findFirst();
-        if (!attachment.isPresent())
+        if (attachment.isPresent())
         {
             return new String(attachment.get().getData(), StandardCharsets.UTF_8);
         }
