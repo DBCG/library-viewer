@@ -1,3 +1,3 @@
-Requires: Java 9+
+Requires: Java 8
 
-mvn javafx:run
+mvn jfx:run
