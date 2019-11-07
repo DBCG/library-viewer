@@ -9,24 +9,23 @@ import java.util.stream.Collectors;
 
 import org.hl7.fhir.dstu3.model.Attachment;
 import org.hl7.fhir.dstu3.model.Library;
-import org.hl7.fhir.instance.model.api.IBaseResource;
-
+import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.context.FhirVersionEnum;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import kong.unirest.Unirest;
 
-import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.rest.client.api.IGenericClient;
 
 public class ViewerController {
 
     public ViewerController() {
-        this.fhirContext = FhirContext.forDstu3();
+        this.currentContext = FhirContext.forDstu3();
     }
 
-    
-    private FhirContext fhirContext;
+    private FhirContext currentContext;
 
     @FXML
     Button get;
@@ -42,30 +41,27 @@ public class ViewerController {
 
     @FXML
     TextField status;
-    
+
     @FXML
     private void get() throws IOException {
         try {
             String url = this.url.getText();
-            if (url == null || url.isEmpty()) {
-                throw new IllegalArgumentException("No URL entered");
+            IGenericClient client = this.getClient(url);
+            String result = null;
+            if (this.currentContext.getVersion().getVersion() == FhirVersionEnum.DSTU3) {
+                result = this.get3(client, url);
+            }
+            else {
+                result = this.get4(client, url);
             }
 
-            URI parsed = new URI(url);
-
-            Library resource = this.fhirContext.newRestfulGenericClient(this.getFhirBaseUri(parsed).toString())
-                .read().resource(Library.class).withUrl(parsed.toString()).execute();
-
-            Optional<Attachment> attachment = resource.getContent().stream().filter(x -> x.getContentType().equals("text/cql")).findFirst();
-
-            if (!attachment.isPresent())
-            {
+            if (result == null || result.isEmpty()) {
                 this.cql.setText("");
                 this.status.setText("No CQL Found for this Library.");
             }
             else {
                 this.status.setText("Library Loaded");
-                this.cql.setText(new String(attachment.get().getData(), StandardCharsets.UTF_8));
+                this.cql.setText(result);
             }
         }
         catch (URISyntaxException e) {
@@ -80,30 +76,14 @@ public class ViewerController {
     private void put() throws IOException {
         try {
             String url = this.url.getText();
-            if (url == null || url.isEmpty()) {
-                throw new IllegalArgumentException("No URL entered");
+            IGenericClient client = this.getClient(url);
+            if (this.currentContext.getVersion().getVersion() == FhirVersionEnum.DSTU3) {
+                this.put3(client, url);
+            }
+            else {
+                this.put4(client, url);
             }
 
-            URI parsed = new URI(url);
-
-            IGenericClient client = this.fhirContext.newRestfulGenericClient(
-                this.getFhirBaseUri(parsed).toString()
-            );
-            
-            
-            Library resource = client.read().resource(Library.class).withUrl(parsed.toString()).execute();
-
-            resource.setContent(
-                resource.getContent().stream().filter(x -> !x.getContentType().equals("text/cql")).collect(Collectors.toList())
-            );
-
-            Attachment attachment = new Attachment();
-            attachment.setContentType("text/cql");
-            attachment.setData(this.cql.getText().getBytes());
-
-            resource.getContent().add(attachment);
-
-            client.update().resource(resource).execute();
             this.status.setText("Library Updated");
         }
         catch (URISyntaxException e) {
@@ -151,5 +131,94 @@ public class ViewerController {
         catch (Exception e) {
             return null;
         }
+    }
+
+    private void setupContext(String baseUrl){
+        this.setContext(this.getVersion(baseUrl));
+    }
+
+    private FhirVersionEnum getVersion(String baseUrl) {
+        String result = Unirest.get(baseUrl + "/metadata")
+                .asJson()
+                .getBody()
+                .getObject()
+                .getString("fhirVersion");
+        
+        return FhirVersionEnum.forVersionString(result);
+    }
+
+    private void setContext(FhirVersionEnum version) {
+        if (this.currentContext.getVersion().getVersion().equals(version)) {
+            return;
+        }
+        else {
+            this.currentContext = version.newContext();
+        }
+    }
+
+    private  IGenericClient getClient(String url) throws URISyntaxException {
+        if (url == null || url.isEmpty()) {
+            throw new IllegalArgumentException("No URL entered");
+        }
+
+        URI parsed = new URI(url);
+        String baseUrl = this.getFhirBaseUri(parsed).toString();
+
+        this.setupContext(baseUrl);
+        return this.currentContext.newRestfulGenericClient(baseUrl);
+    }
+
+    private void put3(IGenericClient client, String url) {
+        Library resource = client.read().resource(Library.class).withUrl(url).execute();
+
+        resource.setContent(
+            resource.getContent().stream().filter(x -> !x.getContentType().equals("text/cql")).collect(Collectors.toList())
+        );
+
+        Attachment attachment = new Attachment();
+        attachment.setContentType("text/cql");
+        attachment.setData(this.cql.getText().getBytes());
+
+        resource.getContent().add(attachment);
+
+        client.update().resource(resource).execute();
+    }
+
+    private void put4(IGenericClient client, String url) {
+        org.hl7.fhir.r4.model.Library resource = client.read().resource(org.hl7.fhir.r4.model.Library.class).withUrl(url).execute();
+
+        resource.setContent(
+            resource.getContent().stream().filter(x -> !x.getContentType().equals("text/cql")).collect(Collectors.toList())
+        );
+
+        org.hl7.fhir.r4.model.Attachment attachment = new org.hl7.fhir.r4.model.Attachment();
+        attachment.setContentType("text/cql");
+        attachment.setData(this.cql.getText().getBytes());
+
+        resource.getContent().add(attachment);
+
+        client.update().resource(resource).execute();
+    }
+
+    private String get3(IGenericClient client, String url) {
+        Library resource = client.read().resource(Library.class).withUrl(url).execute();
+        Optional<Attachment> attachment = resource.getContent().stream().filter(x -> x.getContentType().equals("text/cql")).findFirst();
+        if (attachment.isPresent())
+        {
+            return new String(attachment.get().getData(), StandardCharsets.UTF_8); 
+        }
+        
+        return null;
+    }
+
+    private String get4(IGenericClient client, String url) {
+        org.hl7.fhir.r4.model.Library resource = client.read().resource(org.hl7.fhir.r4.model.Library.class).withUrl(url).execute();
+        Optional< org.hl7.fhir.r4.model.Attachment> attachment = resource.getContent().stream().filter(x -> x.getContentType().equals("text/cql")).findFirst();
+        if (attachment.isPresent())
+        {
+            return new String(attachment.get().getData(), StandardCharsets.UTF_8);
+        }
+
+        return null;
     }
 }
