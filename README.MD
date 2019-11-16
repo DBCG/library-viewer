@@ -1,3 +1,3 @@
-Requires: Java 8
+Requires: [Java 11+](https://adoptopenjdk.net/), [Maven 3.5+](https://maven.apache.org/download.cgi)
 
-mvn jfx:run
+mvn javafx:run
